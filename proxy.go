@@ -10,8 +10,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"golang.org/x/sync/errgroup"
 )
 
 var (
@@ -47,20 +45,23 @@ func main() {
 
 func dialTargets(ctx context.Context) *net.TCPConn {
 	ch := make(chan *net.TCPConn, len(splitTargets))
-	g, ctx := errgroup.WithContext(ctx)
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	var wg sync.WaitGroup
 	for _, t := range splitTargets {
 		t := t
-		g.Go(func() error {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
 			r, err := d.DialContext(ctx, "tcp", t)
 			if err != nil {
-				return err
+				return
 			}
 			ch <- r.(*net.TCPConn)
-			return nil
-		})
+		}()
 	}
 	go func() {
-		g.Wait()
+		wg.Wait()
 		close(ch)
 	}()
 	ret := <-ch
